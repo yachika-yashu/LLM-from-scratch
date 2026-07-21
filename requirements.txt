@@ -1,0 +1,8 @@
+torch>=2.2
+tiktoken>=0.7
+matplotlib>=3.8
+
+# For running the notebook
+jupyter
+ipykernel
+nbconvert
