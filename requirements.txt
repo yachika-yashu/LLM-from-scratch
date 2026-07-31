@@ -6,3 +6,6 @@ matplotlib>=3.8
 jupyter
 ipykernel
 nbconvert
+tensorflow
+tqdm>=4.66
+pandas
