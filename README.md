@@ -1,44 +1,39 @@
 # Building a GPT Model from Scratch
 
-A clean, from-the-ground-up implementation of the **GPT-2 (124M) architecture** in PyTorch.
-The notebook builds the full decoder-only Transformer one component at a time — read it
-top-to-bottom and you have a complete, working GPT.
+A from-the-ground-up implementation of the **GPT-2 architecture** in PyTorch, taken all the
+way from an empty file to a model that follows instructions.
 
-## What's inside
+Nothing is imported from a transformer library. Every component — attention, layer norm,
+the transformer block, the training loop, the decoding strategies — is written out and
+explained, and each notebook states *why* a design choice was made, not just what it does.
 
-[`GPT_Model_From_Scratch.ipynb`](GPT_Model_From_Scratch.ipynb) walks through every piece,
-each defined exactly once, in the order it's used:
+## The path through the repository
+
+Read the notebooks in this order. Each one picks up where the previous one ended.
+
+### 1. [`GPT_Model_From_Scratch.ipynb`](GPT_Model_From_Scratch.ipynb) — build and train
+
+The full decoder-only transformer, one component at a time, each defined exactly once in
+the order it is used:
 
 1. Model configuration (GPT-2 124M hyper-parameters)
-2. Imports & BPE tokenization (`tiktoken`)
-3. Layer Normalization
+2. Imports and BPE tokenization (`tiktoken`)
+3. Layer normalization
 4. GELU activation (tanh approximation)
-5. Position-wise Feed-Forward network
+5. Position-wise feed-forward network
 6. Multi-head **causal** self-attention
-7. Pre-LayerNorm Transformer block with residual connections
+7. Pre-LayerNorm transformer block with residual connections
 8. The full `GPTModel`
-9. Parameter count & memory footprint
+9. Parameter count and memory footprint
 10. Greedy autoregressive text generation
-
-## Setup
-
-```bash
-python -m venv .venv
-# Windows:  .venv\Scripts\activate
-# macOS/Linux:  source .venv/bin/activate
-
-pip install -r requirements.txt
-```
-
-## Run it
-
-Open the notebook in Jupyter / VS Code and run all cells, or execute it headlessly:
-
-```bash
-jupyter nbconvert --to notebook --execute --inplace GPT_Model_From_Scratch.ipynb
-```
-
-## Expected output
+11. Cross-entropy loss
+12. Perplexity
+13. The training corpus (`the-verdict.txt`)
+14. Batching: `Dataset` and `DataLoader`
+15. Loss over a data loader
+16. The training loop
+17. Decoding strategies: temperature and top-k
+18. Saving and loading weights
 
 The model assembles to the correct size:
 
@@ -48,19 +43,88 @@ Parameters with weight tying: 124,412,160
 Approx. model size:           621.83 MB
 ```
 
-The final cell runs the full forward + generation pipeline. The weights are **random
-(untrained)**, so the generated text is intentionally gibberish — it proves the pipeline
-works end to end:
+Trained on a single short story, the output is grammatical but narrow — which is exactly
+why the next notebook exists.
+
+### 2. [`loading_weights.ipynb`](loading_weights.ipynb) — load OpenAI's pretrained weights
+
+Downloads the original GPT-2 checkpoint and copies it into our `GPTModel`. This is where
+the model stops producing gibberish. The interesting part is that the copy is not
+mechanical — three mismatches have to be reconciled:
+
+- OpenAI's names differ from ours (`wte` versus `tok_emb`)
+- their weight matrices are stored transposed, because GPT-2 used a `Conv1D` layer
+- query, key and value are fused into one `[768, 2304]` matrix and must be split
+
+### 3. [`finetuning.ipynb`](finetuning.ipynb) — classification finetuning
+
+Turns the pretrained model into a spam classifier on the SMS Spam Collection dataset:
+the 50,257-way output head is replaced with a 2-way head, most of the network is frozen,
+and loss is computed from the last token only.
 
 ```
-Decoded text: Hello, I am Featureiman Byeswickattribute argue
+Training accuracy:   97.21%
+Validation accuracy: 97.32%
+Test accuracy:       95.67%
 ```
 
-## Next steps
+The trade-off is stated explicitly: the model can now emit only its two class labels and
+is no longer a general-purpose text generator.
 
-Train the model on real text so the generated output becomes coherent.
+### 4. [`instruction_finetuning.ipynb`](instruction_finetuning.ipynb) — instruction finetuning
+
+The opposite approach. The output head is left alone and the whole model (gpt2-medium,
+355M) is trained on 1,100 instruction-response pairs in Alpaca format. Covers the parts
+that are easy to get wrong:
+
+- a collate function that pads each batch to *its own* longest sequence, not the
+  dataset's
+- padding positions masked with `-100` so cross entropy ignores them, while one
+  end-of-text token is kept so the model learns when to stop
+- automated evaluation by scoring responses with a larger local model (Llama 3 via
+  Ollama), since there is no single correct answer to compare against
+
+### Supporting files
+
+| File | Purpose |
+| --- | --- |
+| [`gptmodel.py`](gptmodel.py) | The `GPTModel` class extracted from notebook 1, imported by the rest |
+| [`gpt_download3.py`](gpt_download3.py) | Downloads OpenAI's checkpoint and reshapes the flat TF variable names into a nested dict |
+| [`the-verdict.txt`](the-verdict.txt) | The short-story training corpus for notebook 1 |
+
+## Setup
+
+```bash
+python -m venv .venv
+# Windows:      .venv\Scripts\activate
+# macOS/Linux:  source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+TensorFlow is in the requirements only to read OpenAI's original checkpoint format; no
+part of the model uses it.
+
+Notebook 4 additionally needs [Ollama](https://ollama.com) running locally with the
+`llama3` model pulled, for the evaluation step.
+
+## Running
+
+Open a notebook in Jupyter or VS Code and run all cells, or execute it headlessly:
+
+```bash
+jupyter nbconvert --to notebook --execute --inplace GPT_Model_From_Scratch.ipynb
+```
+
+Everything downloaded or produced along the way — the GPT-2 checkpoint, the SMS Spam
+Collection dataset and its train/validation/test splits, saved `.pth` weights and the
+generated plots — is gitignored. All of it is regenerated by running the notebooks in
+order.
+
+Training times on the machine these notebooks were run on: about 15 minutes for the spam
+classifier and about 2 hours for instruction finetuning.
 
 ## Credits
 
-The architecture follows the design in Sebastian Raschka's *Build a Large Language Model
-(From Scratch)*.
+The architecture and the progression of chapters follow Sebastian Raschka's
+*Build a Large Language Model (From Scratch)*.
