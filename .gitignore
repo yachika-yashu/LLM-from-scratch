@@ -28,5 +28,3 @@ train.csv
 validation.csv
 test.csv
 
-# Generated plots
-*-plot.pdf
